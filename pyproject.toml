@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ontologysim"
+version = "0.1.0"
+description = "Automotive Data + AI Proof of Concept"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.setuptools.packages.find]
+where = ["src"]
