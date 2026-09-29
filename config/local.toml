@@ -1,0 +1,5 @@
+[execution]
+mode = "local"
+
+[paths]
+data_dir = "data"
