@@ -7,6 +7,7 @@ from pathlib import Path
 class Settings:
     execution_mode: str
     data_dir: Path
+    logging_level: str
 
 
 def load_settings(config_path: Path) -> Settings:
@@ -16,4 +17,5 @@ def load_settings(config_path: Path) -> Settings:
     return Settings(
         execution_mode=config["execution"]["mode"],
         data_dir=Path(config["paths"]["data_dir"]),
+        logging_level=config["logging"]["level"],
     )

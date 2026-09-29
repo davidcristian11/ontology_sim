@@ -3,3 +3,6 @@ mode = "local"
 
 [paths]
 data_dir = "data"
+
+[logging]
+level = "INFO"

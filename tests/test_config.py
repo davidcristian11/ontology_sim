@@ -8,3 +8,4 @@ def test_local_configuration_can_be_loaded():
 
     assert settings.execution_mode == "local"
     assert settings.data_dir == Path("data")
+    assert settings.logging_level == "INFO"
