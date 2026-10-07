@@ -1,0 +1,41 @@
+[generator]
+seed = 20261001
+profile = "dev"
+scenario = "bluetooth_reconnect_after_wake"
+output_dir = "data/generated"
+chunk_size = 10000
+
+[profiles.smoke]
+requirements = 24
+components = 12
+test_cases = 40
+test_executions = 750
+log_events = 120000
+defects = 15
+trace_relationships = 400
+
+[scenario.bluetooth_reconnect]
+failure_rate = 0.12
+defect_probability_given_failure = 0.17
+
+[quality]
+missing_link_rate = 0.03
+duplicate_record_rate = 0.005
+missing_field_rate = 0.01
+malformed_log_rate = 0.002
+stale_id_rate = 0.01
+free_text_reference_rate = 0.05
+
+[quality.clock_drift_seconds]
+hcp3 = 1.5
+hcp5 = -0.8
+conmod = 0.3
+
+[profiles.dev]
+requirements = 500
+components = 100
+test_cases = 1000
+test_executions = 10000
+log_events = 2400000
+defects = 200
+trace_relationships = 10000
