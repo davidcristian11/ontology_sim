@@ -6,10 +6,7 @@ def validate_row_accounting(
     accounted_rows = bronze_rows + quarantine_rows
 
     if accounted_rows != expected_rows:
-        raise ValueError(
-            f"Row accounting mismatch: expected {expected_rows}, "
-            f"got {accounted_rows}"
-        )
+        raise ValueError(f"Row accounting mismatch: expected {expected_rows}, got {accounted_rows}")
 
 
 def validate_row_preservation(
@@ -17,7 +14,4 @@ def validate_row_preservation(
     target_rows: int,
 ) -> None:
     if source_rows != target_rows:
-        raise ValueError(
-            f"Row preservation mismatch: "
-            f"source={source_rows}, target={target_rows}"
-        )
+        raise ValueError(f"Row preservation mismatch: source={source_rows}, target={target_rows}")

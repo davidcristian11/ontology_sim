@@ -18,3 +18,5 @@ data/
 
 # Generated/local data
 data/
+
+tmp/

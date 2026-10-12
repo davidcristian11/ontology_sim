@@ -1,0 +1,60 @@
+version: "1.0"
+
+entities:
+  ECU:
+    id_property: canonical_id
+
+  Component:
+    id_property: canonical_id
+
+  Requirement:
+    id_property: canonical_id
+
+  TestCase:
+    id_property: canonical_id
+
+  TestExecution:
+    id_property: canonical_id
+
+  Incident:
+    id_property: canonical_id
+
+  Defect:
+    id_property: canonical_id
+
+relationships:
+  HOSTS:
+    source: ECU
+    target: Component
+
+  TARGETS:
+    source:
+      - Requirement
+      - TestCase
+    target:
+      - ECU
+      - Component
+
+  RELATES_TO:
+    source: Defect
+    target:
+      - Requirement
+      - TestCase
+
+  EXECUTION_OF:
+    source: TestExecution
+    target: TestCase
+
+  AFFECTS:
+    source: Defect
+    target:
+      - ECU
+      - Component
+
+  FOUND_DURING:
+    source: Defect
+    target: TestExecution
+
+  INVOLVES:
+    source: Incident
+    target: TestExecution

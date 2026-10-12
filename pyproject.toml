@@ -9,7 +9,10 @@ description = "Automotive Data + AI Proof of Concept"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "databricks-sql-connector>=4.6.0",
+    "neo4j>=6.4.0",
     "openpyxl>=3.1.5",
+    "python-dotenv>=1.2.4",
 ]
 
 [project.optional-dependencies]

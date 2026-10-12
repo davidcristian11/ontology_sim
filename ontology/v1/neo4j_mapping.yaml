@@ -1,0 +1,19 @@
+version: "1.0"
+
+nodes:
+  ECU: ECU
+  COMPONENT: Component
+  REQUIREMENT: Requirement
+  TEST_CASE: TestCase
+  TEST_EXECUTION: TestExecution
+  INCIDENT: Incident
+  DEFECT: Defect
+
+relationships:
+  HOSTS: HOSTS
+  TARGETS: TARGETS
+  RELATES_TO: RELATES_TO
+  EXECUTION_OF: EXECUTION_OF
+  AFFECTS: AFFECTS
+  FOUND_DURING: FOUND_DURING
+  INVOLVES: INVOLVES
