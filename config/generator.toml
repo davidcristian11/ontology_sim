@@ -1,8 +1,8 @@
 [generator]
 seed = 20261001
-profile = "dev"
-scenario = "bluetooth_reconnect_after_wake"
-output_dir = "data/generated"
+profile = "smoke"
+scenario = "multi_scenario"
+output_dir = "data/generated_v2"
 chunk_size = 10000
 
 [profiles.smoke]
@@ -39,3 +39,13 @@ test_executions = 10000
 log_events = 2400000
 defects = 200
 trace_relationships = 10000
+
+[scenario_distribution.weights]
+bluetooth_reconnect_after_wake = 20
+online_service_network_handover = 15
+charging_session_failure = 12
+infotainment_startup_sequence = 10
+stale_navigation_position = 10
+extended_vehicle_awake = 10
+software_update_compatibility = 10
+poor_network_connectivity = 13

@@ -1,3 +1,4 @@
+import math
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,6 +49,7 @@ class GeneratorConfig:
     bluetooth_scenario: BluetoothScenarioConfig
     quality: QualityConfig
     clock_drift: ClockDriftConfig
+    scenario_weights: tuple[tuple[str, float], ...] = ()
 
 
 def _validate_probability(name: str, value: float) -> None:
@@ -70,7 +72,6 @@ def load_generator_config(path: str | Path) -> GeneratorConfig:
         raw = tomllib.load(file)
 
     generator = raw["generator"]
-
     profile_name = generator["profile"]
     profile_raw = raw["profiles"][profile_name]
 
@@ -90,7 +91,7 @@ def load_generator_config(path: str | Path) -> GeneratorConfig:
 
     bluetooth_scenario = BluetoothScenarioConfig(
         failure_rate=scenario_raw["failure_rate"],
-        defect_probability_given_failure=scenario_raw["defect_probability_given_failure"],
+        defect_probability_given_failure=(scenario_raw["defect_probability_given_failure"]),
     )
 
     quality = QualityConfig(
@@ -108,7 +109,10 @@ def load_generator_config(path: str | Path) -> GeneratorConfig:
         conmod=float(clock_drift_raw["conmod"]),
     )
 
-    _validate_positive("chunk_size", generator["chunk_size"])
+    _validate_positive(
+        "chunk_size",
+        generator["chunk_size"],
+    )
 
     for field_name in (
         "requirements",
@@ -147,6 +151,33 @@ def load_generator_config(path: str | Path) -> GeneratorConfig:
             getattr(quality, field_name),
         )
 
+    # V2: optional scenario distribution.
+    raw_weights = raw.get(
+        "scenario_distribution",
+        {},
+    ).get("weights", {})
+
+    if not isinstance(raw_weights, dict):
+        raise TypeError("scenario_distribution.weights must be a TOML table")
+
+    weights: list[tuple[str, float]] = []
+
+    for name, value in sorted(raw_weights.items()):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value < 0
+        ):
+            raise ValueError(f"Invalid weight for {name}: {value!r}")
+
+        weights.append((name, float(value)))
+
+    if generator["scenario"] == "multi_scenario" and (
+        not weights or sum(weight for _, weight in weights) <= 0
+    ):
+        raise ValueError("multi_scenario requires positive scenario weights")
+
     return GeneratorConfig(
         seed=generator["seed"],
         profile_name=profile_name,
@@ -157,4 +188,5 @@ def load_generator_config(path: str | Path) -> GeneratorConfig:
         bluetooth_scenario=bluetooth_scenario,
         quality=quality,
         clock_drift=clock_drift,
+        scenario_weights=tuple(weights),
     )

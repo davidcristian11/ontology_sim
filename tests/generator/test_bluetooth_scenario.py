@@ -21,7 +21,13 @@ def test_bluetooth_scenario_generates_expected_structure() -> None:
         trace_relationships=80,
     )
 
-    config = replace(config, profile=profile)
+    # Explicitly select V1 Bluetooth mode, independent of the
+    # default scenario configured in generator.toml.
+    config = replace(
+        config,
+        scenario_name="bluetooth_reconnect_after_wake",
+        profile=profile,
+    )
 
     ground_truth = generate_ground_truth(config)
 

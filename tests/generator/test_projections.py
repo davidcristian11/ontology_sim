@@ -21,7 +21,12 @@ def _generate_small_dataset():
         trace_relationships=80,
     )
 
-    config = replace(config, profile=profile)
+    # These projections test the original Bluetooth-only source contracts.
+    config = replace(
+        config,
+        scenario_name="bluetooth_reconnect_after_wake",
+        profile=profile,
+    )
 
     return generate_ground_truth(config)
 
