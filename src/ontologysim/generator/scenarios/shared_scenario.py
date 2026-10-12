@@ -22,6 +22,40 @@ from ontologysim.generator.randoms import random_for
 
 BASE_TIME = datetime(2026, 10, 1, 8, tzinfo=UTC)
 
+# Synthetic observation windows in milliseconds.
+# These are PoC assumptions, not OEM acceptance limits.
+# Each pair contains the passing range followed by the failing range.
+DURATION_RANGES_MS: dict[str, tuple[tuple[int, int], tuple[int, int]]] = {
+    "CHG": ((18_000, 30_000), (40_000, 65_000)),
+    "NAV": ((8_000, 15_000), (15_000, 25_000)),
+    "AWAKE": ((14_000, 25_000), (95_000, 145_000)),
+    "UPD": ((10_000, 25_000), (10_000, 25_000)),
+}
+
+LONG_SCENARIO_PREFIXES = frozenset(DURATION_RANGES_MS)
+
+
+def _duration_range(
+    prefix: str,
+    failed: bool,
+) -> tuple[int, int]:
+    passing, failing = DURATION_RANGES_MS.get(prefix, ((3_000, 6_000), (3_000, 6_000)))
+    return failing if failed else passing
+
+
+def _event_offset(
+    prefix: str,
+    step: "EventStep",
+    is_outcome: bool,
+    duration_ms: int,
+) -> int:
+    if not is_outcome or prefix not in LONG_SCENARIO_PREFIXES:
+        return step.offset_ms
+
+    # Current extended scenarios use two outcome events:
+    # diagnosis/response at 70%, final outcome at 90%.
+    return int(duration_ms * (0.70 if step.offset_ms <= 900 else 0.90))
+
 
 @dataclass(frozen=True, slots=True)
 class ScenarioPlan:
@@ -93,7 +127,7 @@ def generate_scenario_ground_truth(
             Requirement(
                 requirement_id=f"REQ-{spec.prefix}-{index:06d}",
                 title=f"{title} #{index}",
-                description=f"{title}. Scenario: {spec.scenario_id}.",
+                description=(f"{title}. Scenario: {spec.scenario_id}."),
                 requirement_type="Functional",
                 priority=rng.choice(("High", "Medium")),
                 status="Approved",
@@ -122,9 +156,9 @@ def generate_scenario_ground_truth(
             TestCase(
                 test_case_id=f"TC-{spec.prefix}-{index:06d}",
                 title=f"Verify {requirement.title}",
-                description=f"Validate behavior: {spec.scenario_id}.",
+                description=(f"Validate behavior: {spec.scenario_id}."),
                 test_type="Integration",
-                expected_result="System behavior matches the requirement.",
+                expected_result=("System behavior matches the requirement."),
                 priority="High",
                 status="Approved",
                 owner_team=catalog[component_id].owner_team,
@@ -154,7 +188,8 @@ def generate_scenario_ground_truth(
     for index in range(plan.test_executions):
         failed = index in failed_indices
         start = BASE_TIME + timedelta(seconds=index * 45)
-        duration_ms = execution_rng.randint(3_000, 6_000)
+
+        duration_ms = execution_rng.randint(*_duration_range(spec.prefix, failed))
 
         hcp3_version = (
             spec.failure_hcp3_version if failed and spec.failure_hcp3_version else "HCP3_3.4.0-B128"
@@ -165,15 +200,15 @@ def generate_scenario_ground_truth(
                 execution_id=(f"RUN-{spec.prefix}-20261001-{index + 1:06d}"),
                 test_case_id=(test_cases[index % len(test_cases)].test_case_id),
                 campaign_id=f"CAMP-{spec.prefix}-202610",
-                session_id=f"SESSION-{spec.prefix}-{index + 1:06d}",
+                session_id=(f"SESSION-{spec.prefix}-{index + 1:06d}"),
                 start_timestamp=start,
                 end_timestamp=(start + timedelta(milliseconds=duration_ms)),
-                result=TestResult.FAIL if failed else TestResult.PASS,
+                result=(TestResult.FAIL if failed else TestResult.PASS),
                 vehicle_id=f"VEH-{index % 25 + 1:04d}",
                 software_version_hcp3=hcp3_version,
                 software_version_hcp5="HCP5_3.4.0-B094",
                 software_version_conmod="CONMOD-R3.4.0",
-                failure_reason=spec.failure_reason if failed else None,
+                failure_reason=(spec.failure_reason if failed else None),
             )
         )
 
@@ -182,7 +217,9 @@ def generate_scenario_ground_truth(
         f"{spec.scenario_id}:defects",
     )
 
-    failed_executions = [e for e in executions if e.result == TestResult.FAIL]
+    failed_executions = [
+        execution for execution in executions if execution.result == TestResult.FAIL
+    ]
 
     defect_count = min(
         plan.defects,
@@ -195,11 +232,14 @@ def generate_scenario_ground_truth(
         k=defect_count,
     )
 
-    case_by_id = {c.test_case_id: c for c in test_cases}
+    case_by_id = {case.test_case_id: case for case in test_cases}
     affected_component = catalog[spec.defect_component_id]
     defects = []
 
-    for index, execution in enumerate(selected, start=1):
+    for index, execution in enumerate(
+        selected,
+        start=1,
+    ):
         case = case_by_id[execution.test_case_id]
 
         versions = {
@@ -220,8 +260,8 @@ def generate_scenario_ground_truth(
                 created_at=(execution.start_timestamp + timedelta(minutes=15)),
                 updated_at=(execution.start_timestamp + timedelta(hours=2)),
                 affected_ecu=affected_component.ecu,
-                affected_component_id=spec.defect_component_id,
-                affected_software_version=versions[affected_component.ecu],
+                affected_component_id=(spec.defect_component_id),
+                affected_software_version=(versions[affected_component.ecu]),
                 requirement_ids=case.requirement_ids,
                 test_case_ids=(execution.test_case_id,),
                 execution_ids=(execution.execution_id,),
@@ -233,12 +273,13 @@ def generate_scenario_ground_truth(
     log_ids: dict[str, list[str]] = {}
 
     if materialize_logs:
-        for event in _iter_events(spec, plan, executions):
+        for event in _iter_events(
+            spec,
+            plan,
+            executions,
+        ):
             logs.append(event)
-            log_ids.setdefault(
-                event.execution_id,
-                [],
-            ).append(event.event_id)
+            log_ids.setdefault(event.execution_id, []).append(event.event_id)
 
     defect_by_execution = {
         execution_id: defect.defect_id
@@ -250,13 +291,13 @@ def generate_scenario_ground_truth(
         Incident(
             incident_id=f"INC-{spec.prefix}-{i:06d}",
             scenario=spec.scenario_id,
-            execution_id=e.execution_id,
-            session_id=e.session_id,
-            failed=e.result == TestResult.FAIL,
-            log_event_ids=tuple(log_ids.get(e.execution_id, ())),
-            defect_id=defect_by_execution.get(e.execution_id),
+            execution_id=execution.execution_id,
+            session_id=execution.session_id,
+            failed=(execution.result == TestResult.FAIL),
+            log_event_ids=tuple(log_ids.get(execution.execution_id, ())),
+            defect_id=defect_by_execution.get(execution.execution_id),
         )
-        for i, e in enumerate(executions, 1)
+        for i, execution in enumerate(executions, 1)
     ]
 
     traces = _generate_traces(
@@ -291,7 +332,11 @@ def iter_scenario_log_batches(
 
     batch = []
 
-    for event in _iter_events(spec, plan, executions):
+    for event in _iter_events(
+        spec,
+        plan,
+        executions,
+    ):
         batch.append(event)
 
         if len(batch) == batch_size:
@@ -310,7 +355,10 @@ def _iter_events(
     if not executions:
         return
 
-    rng = random_for(plan.seed, f"{spec.scenario_id}:logs")
+    rng = random_for(
+        plan.seed,
+        f"{spec.scenario_id}:logs",
+    )
 
     mandatory = len(spec.start_events) + len(spec.pass_events)
     filler, remainder = divmod(
@@ -323,25 +371,45 @@ def _iter_events(
     for index, execution in enumerate(executions):
         outcome = spec.fail_events if execution.result == TestResult.FAIL else spec.pass_events
 
-        steps = (*spec.start_events, *outcome)
+        if execution.end_timestamp is None:
+            raise ValueError("Clean execution must have end_timestamp")
+
+        duration_ms = int(
+            (execution.end_timestamp - execution.start_timestamp).total_seconds() * 1000
+        )
 
         local = [
             (
-                step.offset_ms,
+                _event_offset(
+                    spec.prefix,
+                    step,
+                    False,
+                    duration_ms,
+                ),
                 step.ecu,
                 step.component_id,
                 step.event_type,
                 step.severity,
                 step.message,
             )
-            for step in steps
+            for step in spec.start_events
         ]
 
-        if execution.end_timestamp is None:
-            raise ValueError("Clean execution must have end_timestamp")
-
-        duration_ms = int(
-            (execution.end_timestamp - execution.start_timestamp).total_seconds() * 1000
+        local.extend(
+            (
+                _event_offset(
+                    spec.prefix,
+                    step,
+                    True,
+                    duration_ms,
+                ),
+                step.ecu,
+                step.component_id,
+                step.event_type,
+                step.severity,
+                step.message,
+            )
+            for step in outcome
         )
 
         for _ in range(filler + int(index < remainder)):
@@ -356,21 +424,28 @@ def _iter_events(
                     component_id,
                     event_type,
                     LogSeverity.DEBUG,
-                    f"{event_type} during {spec.scenario_id}.",
+                    (f"{event_type} during {spec.scenario_id}."),
                 )
             )
 
         local.sort(key=lambda record: record[0])
 
-        for offset, ecu, component_id, event_type, severity, message in local:
+        for (
+            offset,
+            ecu,
+            component_id,
+            event_type,
+            severity,
+            message,
+        ) in local:
             version = {
-                ECU.HCP3: execution.software_version_hcp3,
-                ECU.HCP5: execution.software_version_hcp5,
-                ECU.CONMOD: execution.software_version_conmod,
+                ECU.HCP3: (execution.software_version_hcp3),
+                ECU.HCP5: (execution.software_version_hcp5),
+                ECU.CONMOD: (execution.software_version_conmod),
             }[ecu]
 
             yield LogEvent(
-                event_id=f"LOG-{spec.prefix}-{event_counter:09d}",
+                event_id=(f"LOG-{spec.prefix}-{event_counter:09d}"),
                 timestamp=(execution.start_timestamp + timedelta(milliseconds=offset)),
                 ecu=ecu,
                 component_id=component_id,
@@ -388,8 +463,10 @@ def _iter_events(
 def _component_ecu(component_id: str) -> ECU:
     if component_id.startswith("SWC-HCP3-"):
         return ECU.HCP3
+
     if component_id.startswith("SWC-HCP5-"):
         return ECU.HCP5
+
     if component_id.startswith(("SWC-CON-", "SRV-CON-")):
         return ECU.CONMOD
 
@@ -417,7 +494,13 @@ def _generate_traces(
         if len(traces) >= plan.trace_relationships:
             return
 
-        key = (source_type, source_id, relation, target_type, target_id)
+        key = (
+            source_type,
+            source_id,
+            relation,
+            target_type,
+            target_id,
+        )
 
         if key in seen:
             return
@@ -426,7 +509,7 @@ def _generate_traces(
 
         traces.append(
             TraceRelationship(
-                trace_id=f"TRACE-{spec.prefix}-{len(traces) + 1:07d}",
+                trace_id=(f"TRACE-{spec.prefix}-{len(traces) + 1:07d}"),
                 source_type=source_type,
                 source_id=source_id,
                 relationship_type=relation,
@@ -435,19 +518,25 @@ def _generate_traces(
             )
         )
 
-    for req in requirements:
-        if req.target_component_id:
+    for requirement in requirements:
+        if requirement.target_component_id:
             add(
                 "Requirement",
-                req.requirement_id,
+                requirement.requirement_id,
                 "allocated_to",
                 "Component",
-                req.target_component_id,
+                requirement.target_component_id,
             )
 
     for case in cases:
         for req_id in case.requirement_ids:
-            add("TestCase", case.test_case_id, "verifies", "Requirement", req_id)
+            add(
+                "TestCase",
+                case.test_case_id,
+                "verifies",
+                "Requirement",
+                req_id,
+            )
 
         for component_id in case.component_ids:
             add(
@@ -489,7 +578,8 @@ def _generate_traces(
 
     if len(traces) < plan.trace_relationships:
         raise ValueError(
-            f"Not enough meaningful trace links for {spec.scenario_id}: "
+            f"Not enough meaningful trace links "
+            f"for {spec.scenario_id}: "
             f"requested {plan.trace_relationships}, "
             f"available {len(traces)}"
         )
@@ -514,7 +604,14 @@ def _validate(
     if any(isinstance(n, bool) or not isinstance(n, int) or n < 0 for n in counts):
         raise ValueError("Counts must be non-negative integers")
 
-    if min(plan.requirements, plan.test_cases, plan.test_executions) == 0:
+    if (
+        min(
+            plan.requirements,
+            plan.test_cases,
+            plan.test_executions,
+        )
+        == 0
+    ):
         raise ValueError("At least one requirement, test case and execution is required")
 
     for rate in (
@@ -544,7 +641,7 @@ def _validate(
     if max(step.offset_ms for step in all_steps) >= 3000:
         raise ValueError("Mandatory events must fit within shortest execution")
 
-    catalog = {c.component_id: c for c in components}
+    catalog = {component.component_id: component for component in components}
     missing = set(spec.component_ids) - set(catalog)
 
     if missing:

@@ -39,6 +39,15 @@ class ClockDriftConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class MeasurementsConfig:
+    enabled: bool = False
+    samples_per_execution: int = 48
+    missing_sample_rate: float = 0.01
+    invalid_value_rate: float = 0.005
+    clock_offset_seconds: float = 1.0
+
+
+@dataclass(frozen=True, slots=True)
 class GeneratorConfig:
     seed: int
     profile_name: str
@@ -50,6 +59,7 @@ class GeneratorConfig:
     quality: QualityConfig
     clock_drift: ClockDriftConfig
     scenario_weights: tuple[tuple[str, float], ...] = ()
+    measurements: MeasurementsConfig = MeasurementsConfig()
 
 
 def _validate_probability(name: str, value: float) -> None:
@@ -151,11 +161,8 @@ def load_generator_config(path: str | Path) -> GeneratorConfig:
             getattr(quality, field_name),
         )
 
-    # V2: optional scenario distribution.
-    raw_weights = raw.get(
-        "scenario_distribution",
-        {},
-    ).get("weights", {})
+    # Existing optional multi-scenario distribution.
+    raw_weights = raw.get("scenario_distribution", {}).get("weights", {})
 
     if not isinstance(raw_weights, dict):
         raise TypeError("scenario_distribution.weights must be a TOML table")
@@ -178,6 +185,35 @@ def load_generator_config(path: str | Path) -> GeneratorConfig:
     ):
         raise ValueError("multi_scenario requires positive scenario weights")
 
+    measurement_raw = raw.get("measurements", {})
+
+    measurements = MeasurementsConfig(
+        enabled=measurement_raw.get("enabled", False),
+        samples_per_execution=measurement_raw.get("samples_per_execution", 48),
+        missing_sample_rate=float(measurement_raw.get("missing_sample_rate", 0.01)),
+        invalid_value_rate=float(measurement_raw.get("invalid_value_rate", 0.005)),
+        clock_offset_seconds=float(measurement_raw.get("clock_offset_seconds", 1.0)),
+    )
+
+    if not isinstance(measurements.enabled, bool):
+        raise TypeError("measurements.enabled must be a boolean")
+
+    _validate_positive(
+        "samples_per_execution",
+        measurements.samples_per_execution,
+    )
+    _validate_probability(
+        "missing_sample_rate",
+        measurements.missing_sample_rate,
+    )
+    _validate_probability(
+        "invalid_value_rate",
+        measurements.invalid_value_rate,
+    )
+
+    if not math.isfinite(measurements.clock_offset_seconds):
+        raise ValueError("measurements.clock_offset_seconds must be finite")
+
     return GeneratorConfig(
         seed=generator["seed"],
         profile_name=profile_name,
@@ -189,4 +225,5 @@ def load_generator_config(path: str | Path) -> GeneratorConfig:
         quality=quality,
         clock_drift=clock_drift,
         scenario_weights=tuple(weights),
+        measurements=measurements,
     )

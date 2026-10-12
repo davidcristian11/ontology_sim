@@ -6,7 +6,12 @@ from ontologysim.generator.corruption import (
     apply_controlled_messiness,
     apply_runtime_messiness,
 )
-from ontologysim.generator.manifest import write_generation_manifest
+from ontologysim.generator.manifest import (
+    write_generation_manifest,
+)
+from ontologysim.generator.measurements import (
+    write_measurements,
+)
 from ontologysim.generator.models import GroundTruth, LogEvent
 from ontologysim.generator.projections import project_all_sources
 from ontologysim.generator.scenarios.bluetooth_reconnect import (
@@ -22,7 +27,10 @@ from ontologysim.generator.scenarios.coordinator import (
     iter_multi_scenario_log_batches,
 )
 from ontologysim.generator.validation import validate_written_files
-from ontologysim.generator.writers import write_runtime_sources, write_static_sources
+from ontologysim.generator.writers import (
+    write_runtime_sources,
+    write_static_sources,
+)
 
 BLUETOOTH_SCENARIO = BLUETOOTH
 MULTI_SCENARIO = "multi_scenario"
@@ -59,7 +67,9 @@ def generate_ground_truth(
     raise ValueError(f"Unsupported generator scenario: {config.scenario_name}")
 
 
-def generate_dataset(config: GeneratorConfig) -> GenerationSummary:
+def generate_dataset(
+    config: GeneratorConfig,
+) -> GenerationSummary:
     multi_result: MultiScenarioResult | None = None
 
     if config.scenario_name == MULTI_SCENARIO:
@@ -70,7 +80,10 @@ def generate_dataset(config: GeneratorConfig) -> GenerationSummary:
         ground_truth = multi_result.ground_truth
         log_batches = iter_multi_scenario_log_batches(multi_result, config.chunk_size)
     else:
-        ground_truth = generate_ground_truth(config, materialize_logs=False)
+        ground_truth = generate_ground_truth(
+            config,
+            materialize_logs=False,
+        )
         log_batches = iter_bluetooth_log_batches(
             config,
             ground_truth.test_executions,
@@ -79,10 +92,16 @@ def generate_dataset(config: GeneratorConfig) -> GenerationSummary:
 
     projected = project_all_sources(ground_truth)
     messy_static = apply_controlled_messiness(projected, config)
+
     output_dir = config.output_dir / config.profile_name
     static_files = write_static_sources(messy_static, output_dir)
 
-    runtime_counts = {"hcp3_logs": 0, "hcp5_logs": 0, "conmod_logs": 0}
+    runtime_counts = {
+        "hcp3_logs": 0,
+        "hcp5_logs": 0,
+        "conmod_logs": 0,
+    }
+
     runtime_files: list[Path] = []
     first_batch = True
     total_clean_logs = 0
@@ -95,16 +114,19 @@ def generate_dataset(config: GeneratorConfig) -> GenerationSummary:
 
     if multi_result is not None:
         scenario_log_counts = {run.scenario_id: 0 for run in multi_result.runs}
+
         expected_event_prefixes = {
             BLUETOOTH: "LOG-",
             HANDOVER: "LOG-NH-",
             **{scenario_id: f"LOG-{spec.prefix}-" for scenario_id, spec in SHARED_SPECS.items()},
         }
+
         component_ids = {component.component_id for component in ground_truth.components}
 
         for run in multi_result.runs:
             for execution in run.ground_truth.test_executions:
                 execution_scenarios[execution.execution_id] = run.scenario_id
+
                 execution_sessions[execution.execution_id] = execution.session_id
 
     for log_batch in log_batches:
@@ -124,8 +146,11 @@ def generate_dataset(config: GeneratorConfig) -> GenerationSummary:
             components=ground_truth.components,
             log_events=log_batch,
         )
+
         projected_batch = project_all_sources(batch_ground_truth)
+
         messy_batch = apply_runtime_messiness(projected_batch, config)
+
         runtime_files = write_runtime_sources(
             messy_batch,
             output_dir,
@@ -142,12 +167,15 @@ def generate_dataset(config: GeneratorConfig) -> GenerationSummary:
         )
 
     scenario_statistics: dict[str, dict[str, int]] | None = None
+
     if multi_result is not None:
         scenario_statistics = {}
+
         for run in multi_result.runs:
             scenario_id = run.scenario_id
             expected = multi_result.allocations["log_events"][scenario_id]
             actual = scenario_log_counts[scenario_id]
+
             if actual != expected:
                 raise ValueError(
                     f"{scenario_id}: expected {expected} log events; generated {actual}"
@@ -164,11 +192,43 @@ def generate_dataset(config: GeneratorConfig) -> GenerationSummary:
             }
 
     written_files = static_files + runtime_files
-    validate_written_files(written_files)
 
     source_counts = _source_counts(messy_static)
     source_counts.update(runtime_counts)
-    ground_truth_counts = _ground_truth_counts(ground_truth, total_clean_logs)
+
+    measurement_statistics: dict[str, object] | None = None
+
+    # Explicit V2 opt-in.
+    # Bluetooth-only V1 remains unchanged.
+    if multi_result is not None and config.measurements.enabled:
+        measurement_file, measurement_stats = write_measurements(ground_truth, config, output_dir)
+
+        expected_measurements = (
+            len(ground_truth.test_executions) * config.measurements.samples_per_execution
+        )
+
+        if measurement_stats.expected_samples != expected_measurements:
+            raise ValueError("Measurement count invariant failed")
+
+        if (
+            measurement_stats.written_samples + measurement_stats.missing_samples
+            != measurement_stats.expected_samples
+        ):
+            raise ValueError("Measurement quality accounting mismatch")
+
+        written_files.append(measurement_file)
+
+        source_counts["measurements"] = measurement_stats.written_samples
+
+        measurement_statistics = measurement_stats.as_manifest()
+
+    validate_written_files(written_files)
+
+    ground_truth_counts = _ground_truth_counts(
+        ground_truth,
+        total_clean_logs,
+    )
+
     total_bytes = sum(path.stat().st_size for path in written_files)
 
     manifest_path = write_generation_manifest(
@@ -179,6 +239,7 @@ def generate_dataset(config: GeneratorConfig) -> GenerationSummary:
         files=written_files,
         total_bytes=total_bytes,
         scenario_statistics=scenario_statistics,
+        measurement_statistics=measurement_statistics,
     )
 
     return GenerationSummary(
@@ -201,24 +262,31 @@ def _validate_multi_runtime_batch(
     expected_event_prefixes: dict[str, str],
     scenario_log_counts: dict[str, int],
 ) -> None:
-    """Check clean references and ordered per-scenario IDs in constant log memory."""
     for event in events:
         scenario_id = execution_scenarios.get(event.execution_id)
+
         if scenario_id is None:
             raise ValueError(f"Unknown execution in log event: {event.execution_id}")
+
         if event.component_id not in component_ids:
             raise ValueError(f"Unknown component in log event: {event.component_id}")
+
         if event.session_id != execution_sessions[event.execution_id]:
             raise ValueError(f"Wrong session in log event: {event.event_id}")
 
         sequence = scenario_log_counts[scenario_id] + 1
         expected_id = f"{expected_event_prefixes[scenario_id]}{sequence:09d}"
+
         if event.event_id != expected_id:
             raise ValueError(f"Unexpected log event ID: {event.event_id}; expected {expected_id}")
+
         scenario_log_counts[scenario_id] = sequence
 
 
-def _ground_truth_counts(ground_truth: GroundTruth, log_event_count: int) -> dict[str, int]:
+def _ground_truth_counts(
+    ground_truth: GroundTruth,
+    log_event_count: int,
+) -> dict[str, int]:
     return {
         "requirements": len(ground_truth.requirements),
         "components": len(ground_truth.components),
@@ -231,11 +299,16 @@ def _ground_truth_counts(ground_truth: GroundTruth, log_event_count: int) -> dic
     }
 
 
-def _source_counts(sources: dict[str, object]) -> dict[str, int]:
+def _source_counts(
+    sources: dict[str, object],
+) -> dict[str, int]:
     architecture = sources["architecture"]
+
     if not isinstance(architecture, dict):
         raise TypeError("architecture must be a dictionary")
+
     components = architecture["components"]
+
     if not isinstance(components, list):
         raise TypeError("architecture components must be a list")
 

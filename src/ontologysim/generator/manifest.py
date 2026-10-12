@@ -18,11 +18,18 @@ def build_generation_id(config: GeneratorConfig) -> str:
         "clock_drift": asdict(config.clock_drift),
     }
 
-    # Preserve the V1 fingerprint while including V2 scenario allocation inputs.
     if config.scenario_name == "multi_scenario":
         identity["scenario_weights"] = dict(config.scenario_weights)
 
-    payload = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+        if config.measurements.enabled:
+            identity["measurements"] = asdict(config.measurements)
+
+    payload = json.dumps(
+        identity,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+
     return hashlib.sha256(payload).hexdigest()[:16]
 
 
@@ -35,6 +42,7 @@ def write_generation_manifest(
     files: list[Path],
     total_bytes: int,
     scenario_statistics: dict[str, dict[str, int]] | None = None,
+    measurement_statistics: dict[str, object] | None = None,
 ) -> Path:
     manifest_path = output_dir / "manifest.json"
     is_multi = config.scenario_name == "multi_scenario"
@@ -50,8 +58,11 @@ def write_generation_manifest(
     if is_multi:
         configuration["scenario_weights"] = dict(config.scenario_weights)
 
+        if config.measurements.enabled:
+            configuration["measurements"] = asdict(config.measurements)
+
     manifest = {
-        "schema_version": 2 if is_multi else 1,
+        "schema_version": (3 if measurement_statistics is not None else (2 if is_multi else 1)),
         "generation_id": build_generation_id(config),
         "generated_at": datetime.now(UTC).isoformat(),
         "profile": config.profile_name,
@@ -73,8 +84,17 @@ def write_generation_manifest(
     if is_multi:
         manifest["scenario_statistics"] = scenario_statistics or {}
 
+    if measurement_statistics is not None:
+        manifest["measurement_statistics"] = measurement_statistics
+
     manifest_path.write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+        json.dumps(
+            manifest,
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n",
         encoding="utf-8",
     )
+
     return manifest_path

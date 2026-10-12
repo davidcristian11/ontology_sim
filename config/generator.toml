@@ -1,9 +1,16 @@
 [generator]
 seed = 20261001
-profile = "smoke"
+profile = "medium"
 scenario = "multi_scenario"
-output_dir = "data/generated_v2"
+output_dir = "data/generated_v2_medium"
 chunk_size = 10000
+
+[measurements]
+enabled = true
+samples_per_execution = 48
+missing_sample_rate = 0.01
+invalid_value_rate = 0.005
+clock_offset_seconds = 1.0
 
 [profiles.smoke]
 requirements = 24
@@ -13,6 +20,15 @@ test_executions = 750
 log_events = 120000
 defects = 15
 trace_relationships = 400
+
+[profiles.medium]
+requirements = 8000
+components = 1600
+test_cases = 16000
+test_executions = 160000
+log_events = 38400000
+defects = 3200
+trace_relationships = 160000
 
 [scenario.bluetooth_reconnect]
 failure_rate = 0.12

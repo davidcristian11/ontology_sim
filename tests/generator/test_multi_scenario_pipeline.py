@@ -28,6 +28,7 @@ def _config(tmp_path, chunk_size):
             trace_relationships=160,
         ),
         scenario_weights=tuple((name, 1.0) for name in SCENARIOS),
+        measurements=replace(original.measurements, enabled=False),
     )
 
 
@@ -37,6 +38,7 @@ def test_physical_multi_scenario_pipeline(tmp_path):
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
     assert len(result.files) == 9
+    assert "measurements" not in result.source_counts
     assert manifest["schema_version"] == 2
     assert set(manifest["scenario_statistics"]) == set(SCENARIOS)
     assert result.ground_truth_counts["components"] == 17
@@ -58,18 +60,23 @@ def test_physical_multi_scenario_pipeline(tmp_path):
         "UPD",
         "POOR",
     }
-    assert next(c for c in cases if c["test_case_id"].startswith("TC-BT-"))["preconditions"] == (
-        "Vehicle sleeping; paired Bluetooth device available"
+
+    assert (
+        next(c for c in cases if c["test_case_id"].startswith("TC-BT-"))["preconditions"]
+        == "Vehicle sleeping; paired Bluetooth device available"
     )
+
     assert all(c["component_refs"] for c in cases)
     assert manifest["configuration"]["scenario_weights"] == dict(config.scenario_weights)
 
     with (result.output_dir / "test_execution/test_executions.jsonl").open(encoding="utf-8") as f:
         executions = [json.loads(line) for line in f]
+
     assert len({e["execution_id"] for e in executions}) == 80
     assert all(e["session_id"] for e in executions)
 
     no_logs = generate_ground_truth(config, materialize_logs=False)
+
     assert no_logs.log_events == []
     assert len(no_logs.incidents) == 80
 
@@ -81,6 +88,7 @@ def test_physical_output_is_chunk_independent(tmp_path):
     for file_a in first.files:
         relative = file_a.relative_to(first.output_dir)
         file_b = second.output_dir / relative
+
         if relative.suffix == ".xlsx":
             workbook_a = load_workbook(file_a, read_only=True)
             workbook_b = load_workbook(file_b, read_only=True)
@@ -92,16 +100,19 @@ def test_physical_output_is_chunk_independent(tmp_path):
 
     manifest_a = json.loads(first.manifest_path.read_text())
     manifest_b = json.loads(second.manifest_path.read_text())
+
     assert manifest_a["generation_id"] == manifest_b["generation_id"]
     assert manifest_a["scenario_statistics"] == manifest_b["scenario_statistics"]
 
 
 def test_multi_fingerprint_includes_distribution(tmp_path):
     config = _config(tmp_path, 17)
+
     altered = replace(
         config,
         scenario_weights=tuple(
             (name, (2.0 if i == 0 else 1.0)) for i, name in enumerate(SCENARIOS)
         ),
     )
+
     assert build_generation_id(config) != build_generation_id(altered)

@@ -22,17 +22,21 @@ def test_pipeline_generates_complete_dataset(
         trace_relationships=80,
     )
 
+    # Explicitly test the original nine-source V1 pipeline.
     config = replace(
         config,
         profile_name="test",
+        scenario_name="bluetooth_reconnect_after_wake",
         profile=profile,
         output_dir=tmp_path,
+        measurements=replace(config.measurements, enabled=False),
     )
 
     summary = generate_dataset(config)
 
     assert summary.output_dir == tmp_path / "test"
     assert len(summary.files) == 9
+    assert "measurements" not in summary.source_counts
     assert summary.total_bytes > 0
 
     assert summary.ground_truth_counts["requirements"] == 12
