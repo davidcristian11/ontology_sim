@@ -3,22 +3,22 @@ from ontologysim.neo4j.connection import create_driver
 
 EXPECTED_NODES = {
     "ECU": 3,
-    "Component": 100,
-    "Requirement": 500,
-    "TestCase": 1000,
-    "TestExecution": 10000,
-    "Incident": 10000,
-    "Defect": 200,
+    "Component": 1600,
+    "Requirement": 8000,
+    "TestCase": 16000,
+    "TestExecution": 160000,
+    "Incident": 160000,
+    "Defect": 3200,
 }
 
 EXPECTED_RELATIONSHIPS = {
-    "AFFECTS": 400,
-    "EXECUTION_OF": 9700,
-    "FOUND_DURING": 184,
-    "HOSTS": 100,
-    "INVOLVES": 10000,
-    "RELATES_TO": 400,
-    "TARGETS": 1860,
+    "AFFECTS": 6400,
+    "EXECUTION_OF": 155200,
+    "FOUND_DURING": 2947,
+    "HOSTS": 1600,
+    "INVOLVES": 160000,
+    "RELATES_TO": 6400,
+    "TARGETS": 47360,
 }
 
 

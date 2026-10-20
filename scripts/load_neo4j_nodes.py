@@ -12,16 +12,20 @@ load_dotenv()
 
 EXPECTED_COUNTS = {
     "ECU": 3,
-    "Component": 100,
-    "Requirement": 500,
-    "TestCase": 1000,
-    "TestExecution": 10000,
-    "Incident": 10000,
-    "Defect": 200,
+    "Component": 1600,
+    "Requirement": 8000,
+    "TestCase": 16000,
+    "TestExecution": 160000,
+    "Incident": 160000,
+    "Defect": 3200,
 }
 
 
 def main() -> None:
+    generation_id = os.environ["GRAPH_GENERATION_ID"]
+
+    print(f"Loading graph generation: {generation_id}")
+
     # Databricks
     with (
         sql.connect(
@@ -33,15 +37,17 @@ def main() -> None:
     ):
         cursor.execute(
             """
-                SELECT
-                    node_id,
-                    node_type,
-                    canonical_id,
-                    display_name,
-                    properties,
-                    mapping_version
-                FROM ontologysim.graph_ready.nodes
-                """
+            SELECT
+                node_id,
+                node_type,
+                canonical_id,
+                display_name,
+                properties,
+                mapping_version
+            FROM ontologysim.graph_ready.nodes
+            WHERE _generation_id = ?
+            """,
+            [generation_id],
         )
 
         rows = [

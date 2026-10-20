@@ -32,20 +32,54 @@ def load_relationships(
 
     for row in rows:
         relationship_type = row["relationship_type"]
+        source_node_type = row["source_node_type"]
+        target_node_type = row["target_node_type"]
 
         if relationship_type not in RELATIONSHIP_TYPES:
-            raise ValueError(f"Unsupported relationship type: {relationship_type}")
+            raise ValueError(
+                f"Unsupported relationship type: {relationship_type}"
+            )
 
-        grouped[relationship_type].append(row)
+        if source_node_type not in NODE_LABELS:
+            raise ValueError(
+                f"Unsupported source node type: {source_node_type}"
+            )
 
-    for relationship_type, relationship_rows in grouped.items():
-        # relationship_type is safe because it was validated
-        # against RELATIONSHIP_TYPES above.
+        if target_node_type not in NODE_LABELS:
+            raise ValueError(
+                f"Unsupported target node type: {target_node_type}"
+            )
+
+        key = (
+            relationship_type,
+            source_node_type,
+            target_node_type,
+        )
+
+        grouped[key].append(row)
+
+    for (
+        relationship_type,
+        source_node_type,
+        target_node_type,
+    ), relationship_rows in grouped.items():
+        source_label = NODE_LABELS[source_node_type]
+        target_label = NODE_LABELS[target_node_type]
+
         query = f"""
         UNWIND $rows AS row
 
-        MATCH (source {{canonical_id: row.source_node_id}})
-        MATCH (target {{canonical_id: row.target_node_id}})
+        MATCH (
+            source:{source_label} {{
+                canonical_id: row.source_node_id
+            }}
+        )
+
+        MATCH (
+            target:{target_label} {{
+                canonical_id: row.target_node_id
+            }}
+        )
 
         MERGE (source)-[r:{relationship_type} {{
             edge_id: row.edge_id
@@ -59,7 +93,9 @@ def load_relationships(
             r.properties_json = row.properties
         """
 
-        for start in range(0, len(relationship_rows), batch_size):
+        total = len(relationship_rows)
+
+        for start in range(0, total, batch_size):
             batch = relationship_rows[start : start + batch_size]
 
             driver.execute_query(
@@ -68,17 +104,36 @@ def load_relationships(
                 database_=database,
             )
 
-        print(f"Loaded {len(relationship_rows):,} {relationship_type} relationships")
+            loaded = min(start + len(batch), total)
+
+            if loaded == total or loaded % 10000 == 0:
+                print(
+                    f"  {relationship_type} "
+                    f"{source_label}->{target_label}: "
+                    f"{loaded:,}/{total:,}"
+                )
+
+        print(
+            f"Loaded {total:,} {relationship_type} "
+            f"{source_label}->{target_label} relationships"
+        )
 
 
-def load_nodes(driver, database: str, rows: list[dict], batch_size: int = 1000) -> None:
+def load_nodes(
+    driver,
+    database: str,
+    rows: list[dict],
+    batch_size: int = 1000,
+) -> None:
     grouped = defaultdict(list)
 
     for row in rows:
         node_type = row["node_type"]
 
         if node_type not in NODE_LABELS:
-            raise ValueError(f"Unsupported node type: {node_type}")
+            raise ValueError(
+                f"Unsupported node type: {node_type}"
+            )
 
         grouped[node_type].append(row)
 
@@ -88,7 +143,9 @@ def load_nodes(driver, database: str, rows: list[dict], batch_size: int = 1000) 
         query = f"""
         UNWIND $rows AS row
 
-        MERGE (n:{label} {{canonical_id: row.canonical_id}})
+        MERGE (n:{label} {{
+            canonical_id: row.canonical_id
+        }})
 
         SET
             n.node_id = row.node_id,

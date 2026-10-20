@@ -11,17 +11,21 @@ load_dotenv()
 
 
 EXPECTED_COUNTS = {
-    "AFFECTS": 400,
-    "EXECUTION_OF": 9700,
-    "FOUND_DURING": 184,
-    "HOSTS": 100,
-    "INVOLVES": 10000,
-    "RELATES_TO": 400,
-    "TARGETS": 1860,
+    "AFFECTS": 6400,
+    "EXECUTION_OF": 155200,
+    "FOUND_DURING": 2947,
+    "HOSTS": 1600,
+    "INVOLVES": 160000,
+    "RELATES_TO": 6400,
+    "TARGETS": 47360,
 }
 
 
 def main() -> None:
+    generation_id = os.environ["GRAPH_GENERATION_ID"]
+
+    print(f"Loading graph generation: {generation_id}")
+
     # Read graph-ready edges from Databricks
     with (
         sql.connect(
@@ -33,18 +37,28 @@ def main() -> None:
     ):
         cursor.execute(
             """
-                SELECT
-                    edge_id,
-                    source_node_id,
-                    relationship_type,
-                    target_node_id,
-                    relationship_origin,
-                    relationship_status,
-                    source_family,
-                    mapping_version,
-                    properties
-                FROM ontologysim.graph_ready.edges
-                """
+            SELECT
+                e.edge_id,
+                e.source_node_id,
+                e.relationship_type,
+                e.target_node_id,
+                e.relationship_origin,
+                e.relationship_status,
+                e.source_family,
+                e.mapping_version,
+                e.properties,
+                s.node_type AS source_node_type,
+                t.node_type AS target_node_type
+            FROM ontologysim.graph_ready.edges e
+            JOIN ontologysim.graph_ready.nodes s
+                ON e.source_node_id = s.node_id
+            AND e._generation_id = s._generation_id
+            JOIN ontologysim.graph_ready.nodes t
+                ON e.target_node_id = t.node_id
+            AND e._generation_id = t._generation_id
+            WHERE e._generation_id = ?
+            """,
+            [generation_id],
         )
 
         rows = [
@@ -58,6 +72,8 @@ def main() -> None:
                 "source_family": row[6],
                 "mapping_version": row[7],
                 "properties": row[8],
+                "source_node_type": row[9],
+                "target_node_type": row[10],
             }
             for row in cursor.fetchall()
         ]
@@ -90,10 +106,12 @@ def main() -> None:
 
         for relationship_type, expected in EXPECTED_COUNTS.items():
             count = actual.get(relationship_type, 0)
-
             status = "PASS" if count == expected else "FAIL"
 
-            print(f"{relationship_type:15} {count:>6,} / {expected:>6,}  {status}")
+            print(
+                f"{relationship_type:15} "
+                f"{count:>6,} / {expected:>6,}  {status}"
+            )
 
         total = sum(actual.values())
 
